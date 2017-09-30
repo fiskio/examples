@@ -125,7 +125,12 @@ def train():
     start_time = time.time()
     ntokens = len(corpus.dictionary)
     hidden = model.init_hidden(args.batch_size)
+    learning_rate = 1e-2
+    temp = 10
+    beta = 0
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     for batch, i in enumerate(range(0, train_data.size(0) - 1, args.bptt)):
+        optimizer.zero_grad()
         data, targets = get_batch(train_data, i)
         # Starting each batch, we detach the hidden state from how it was previously produced.
         # If we didn't, the model would try backpropagating all the way to start of the dataset.
@@ -133,28 +138,36 @@ def train():
         model.zero_grad()
         output, hidden = model(data, hidden)
 
-        #
         u = model.decoder.weight[targets.data]
 
         score = model.decoder.weight @ u.transpose(0, 1)
+        score = nn.Softmax()(score / temp)
         score = Variable(score.data, requires_grad=False)
 
         ce_loss = nn.CrossEntropyLoss()(output.view(-1, ntokens), targets)
-        kl_loss = nn.KLDivLoss()(output.view(-1, ntokens), score)
 
-        beta = 0
-        temp = 10
-        corr = (temp ** 2) * ntokens
+        y_hat = nn.Softmax()(output.view(-1, ntokens) / temp)
+        kl_loss = nn.KLDivLoss()(y_hat, score)
+        corr = temp * ntokens
+        kl_loss = corr * kl_loss ** 2
+
+
+        print(corr)
+
+        print('CE', float(ce_loss.data[0]))
+        print('kL', float(kl_loss.data[0]))
 
         loss = beta * kl_loss + (1-beta) * ce_loss
         loss.backward()
 
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
         torch.nn.utils.clip_grad_norm(model.parameters(), args.clip)
-        for p in model.parameters():
-            p.data.add_(-lr, p.grad.data)
+        # for p in model.parameters():
+        #     p.data.add_(-lr, p.grad.data)
 
-        total_loss += loss.data
+        optimizer.step()
+
+        total_loss += ce_loss.data
 
         if batch % args.log_interval == 0 and batch > 0:
             cur_loss = total_loss[0] / args.log_interval
