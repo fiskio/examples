@@ -1,3 +1,4 @@
+import os
 import argparse
 import time
 import math
@@ -39,8 +40,8 @@ parser.add_argument('--cuda', action='store_true',
                     help='use CUDA')
 parser.add_argument('--log-interval', type=int, default=200, metavar='N',
                     help='report interval')
-parser.add_argument('--save', type=str,  default='model.pt',
-                    help='path to save the final model')
+parser.add_argument('--save', type=str,  default='model',
+                    help='path to save the validation models')
 parser.add_argument('--beta', type=float, default=0.5,
                     help='Interpolation weight for CE loss')
 parser.add_argument('--temp', type=float, default=10,
@@ -123,7 +124,8 @@ def evaluate(data_source):
         hidden = repackage_hidden(hidden)
     return total_loss[0] / len(data_source)
 
-optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+lr = args.lr
+optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
 
 def train():
@@ -172,7 +174,7 @@ def train():
         # switch optimization
         if args.sgd:
             for p in model.parameters():
-                p.data.add_(-args.lr, p.grad.data)
+                p.data.add_(-lr, p.grad.data)
         else:
             optimizer.step()
 
@@ -185,12 +187,14 @@ def train():
             cur_ce = total_ce[0] / args.log_interval
             cur_kl = total_kl[0] / args.log_interval
             elapsed = time.time() - start_time
-            print('| epoch {:3d} | {:5d}/{:5d} batches | ms/batch {:5.2f} | '
-                    'ce {:5.2f} | kl {:5.2f} | loss {:5.2f} | ppl {:7.2f}'.format(
+            print('| epoch {:3d} | {:5d}/{:5d} batches | ms/batch {:5.2f} '
+                  '| lr {:f} | ce {:5.2f} | kl {:5.2f} | loss {:5.2f} '
+                  '| ppl {:7.2f}'.format(
                 epoch,
                 batch,
                 len(train_data) // args.bptt,
                 elapsed * 1000 / args.log_interval,
+                lr,
                 cur_ce,
                 cur_kl,
                 cur_loss,
@@ -214,15 +218,21 @@ try:
                 'valid ppl {:8.2f}'.format(epoch, (time.time() - epoch_start_time),
                                            val_loss, math.exp(val_loss)))
         print('-' * 89)
-        # Save the model if the validation loss is the best we've seen so far.
+
+        # Save the model after each validation
+        os.makedirs(args.save)
+        model_name = 'model_%d_%.2f.pt' % (epoch, math.exp(val_loss))
+        model_file = os.path.join(args.save, model_name)
+        with open(model_file, 'wb') as f:
+            torch.save(model, f)
+
+        # Keep track of best_loss
         if not best_val_loss or val_loss < best_val_loss:
-            with open(args.save, 'wb') as f:
-                torch.save(model, f)
             best_val_loss = val_loss
         else:
             # Anneal the learning rate if no improvement in the validation
-            args.lr /= 4.0
-            print('new LR: %f' % args.lr)
+            lr /= 4.0
+            print('new learning rate: %f' % lr)
 except KeyboardInterrupt:
     print('-' * 89)
     print('Exiting from training early')
