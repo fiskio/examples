@@ -19,7 +19,7 @@ parser.add_argument('--nhid', type=int, default=200,
                     help='number of hidden units per layer')
 parser.add_argument('--nlayers', type=int, default=2,
                     help='number of layers')
-parser.add_argument('--lr', type=float, default=20,
+parser.add_argument('--lr', type=float, default=1e-2,
                     help='initial learning rate')
 parser.add_argument('--clip', type=float, default=0.25,
                     help='gradient clipping')
@@ -41,6 +41,10 @@ parser.add_argument('--log-interval', type=int, default=200, metavar='N',
                     help='report interval')
 parser.add_argument('--save', type=str,  default='model.pt',
                     help='path to save the final model')
+parser.add_argument('--beta', type=float, default=0.5,
+                    help='Interpolation weight for CE loss')
+parser.add_argument('--temp', type=float, default=10,
+                    help='softmax temperature')
 args = parser.parse_args()
 
 # Set the random seed manually for reproducibility.
@@ -122,13 +126,12 @@ def train():
     # Turn on training mode which enables dropout.
     model.train()
     total_loss = 0
+    total_kl = 0
+    total_ce = 0
     start_time = time.time()
     ntokens = len(corpus.dictionary)
     hidden = model.init_hidden(args.batch_size)
-    learning_rate = 1e-2
-    temp = 10
-    beta = 0
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     for batch, i in enumerate(range(0, train_data.size(0) - 1, args.bptt)):
         optimizer.zero_grad()
         data, targets = get_batch(train_data, i)
@@ -138,45 +141,57 @@ def train():
         model.zero_grad()
         output, hidden = model(data, hidden)
 
+        # CE loss
+        ce_loss = nn.CrossEntropyLoss()(output.view(-1, ntokens), targets)
+
+        # Target distribution
         u = model.decoder.weight[targets.data]
 
         score = model.decoder.weight @ u.transpose(0, 1)
-        score = nn.Softmax()(score / temp)
+        score = nn.Softmax()(score / args.temp)
         score = Variable(score.data, requires_grad=False)
 
-        ce_loss = nn.CrossEntropyLoss()(output.view(-1, ntokens), targets)
+        y_hat = nn.Softmax()(output.view(-1, ntokens) / args.temp)
 
-        y_hat = nn.Softmax()(output.view(-1, ntokens) / temp)
+        # KL loss
         kl_loss = nn.KLDivLoss()(y_hat, score)
-        corr = temp * ntokens
+        corr = args.temp * ntokens # scale factor
         kl_loss = corr * kl_loss ** 2
 
-
-        print(corr)
-
-        print('CE', float(ce_loss.data[0]))
-        print('kL', float(kl_loss.data[0]))
-
-        loss = beta * kl_loss + (1-beta) * ce_loss
+        # combine losses
+        loss = args.beta * kl_loss + (1 - args.beta) * ce_loss
         loss.backward()
 
-        # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
+        # `clip_grad_norm` helps prevent the exploding gradient
         torch.nn.utils.clip_grad_norm(model.parameters(), args.clip)
+
         # for p in model.parameters():
         #     p.data.add_(-lr, p.grad.data)
 
         optimizer.step()
 
-        total_loss += ce_loss.data
+        total_loss += loss.data
+        total_ce += ce_loss.data
+        total_kl += kl_loss.data
 
         if batch % args.log_interval == 0 and batch > 0:
             cur_loss = total_loss[0] / args.log_interval
+            cur_ce = total_ce[0] / args.log_interval
+            cur_kl = total_kl[0] / args.log_interval
             elapsed = time.time() - start_time
-            print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:02.2f} | ms/batch {:5.2f} | '
-                    'loss {:5.2f} | ppl {:8.2f}'.format(
-                epoch, batch, len(train_data) // args.bptt, lr,
-                elapsed * 1000 / args.log_interval, cur_loss, math.exp(cur_loss)))
+            print('| epoch {:3d} | {:5d}/{:5d} batches | ms/batch {:5.2f} | '
+                    'ce {:5.2f} | kl {:5.2f} | loss {:5.2f} | ppl {:7.2f}'.format(
+                epoch,
+                batch,
+                len(train_data) // args.bptt,
+                elapsed * 1000 / args.log_interval,
+                cur_ce,
+                cur_kl,
+                cur_loss,
+                math.exp(cur_ce)))
             total_loss = 0
+            total_ce = 0
+            total_kl = 0
             start_time = time.time()
 
 # Loop over epochs.
