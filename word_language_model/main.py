@@ -155,11 +155,12 @@ def train():
 
         # KL loss
         kl_loss = nn.KLDivLoss()(y_hat, score)
-        corr = args.temp * ntokens # scale factor
-        kl_loss = corr * kl_loss ** 2
+        corr = args.temp * ntokens  # scale factor
+        kl_loss = corr * kl_loss ** 2  # kl_loss is squared
 
         # combine losses
         loss = args.beta * kl_loss + (1 - args.beta) * ce_loss
+
         loss.backward()
 
         # `clip_grad_norm` helps prevent the exploding gradient
@@ -195,7 +196,6 @@ def train():
             start_time = time.time()
 
 # Loop over epochs.
-lr = args.lr
 best_val_loss = None
 
 # At any point you can hit Ctrl + C to break out of training early.
@@ -215,8 +215,9 @@ try:
                 torch.save(model, f)
             best_val_loss = val_loss
         else:
-            # Anneal the learning rate if no improvement has been seen in the validation dataset.
-            lr /= 4.0
+            # Anneal the learning rate if no improvement in the validation
+            args.lr /= 4.0
+            print('new LR: %f' % args.lr)
 except KeyboardInterrupt:
     print('-' * 89)
     print('Exiting from training early')
