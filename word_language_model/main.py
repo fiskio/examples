@@ -19,7 +19,7 @@ parser.add_argument('--nhid', type=int, default=200,
                     help='number of hidden units per layer')
 parser.add_argument('--nlayers', type=int, default=2,
                     help='number of layers')
-parser.add_argument('--lr', type=float, default=1e-2,
+parser.add_argument('--lr', type=float, default=1e-3,
                     help='initial learning rate')
 parser.add_argument('--clip', type=float, default=0.25,
                     help='gradient clipping')
@@ -45,6 +45,8 @@ parser.add_argument('--beta', type=float, default=0.5,
                     help='Interpolation weight for CE loss')
 parser.add_argument('--temp', type=float, default=10,
                     help='softmax temperature')
+parser.add_argument('--sgd', action='store_true',
+                    help='use classic SGD')
 args = parser.parse_args()
 
 # Set the random seed manually for reproducibility.
@@ -121,6 +123,8 @@ def evaluate(data_source):
         hidden = repackage_hidden(hidden)
     return total_loss[0] / len(data_source)
 
+optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+
 
 def train():
     # Turn on training mode which enables dropout.
@@ -131,7 +135,6 @@ def train():
     start_time = time.time()
     ntokens = len(corpus.dictionary)
     hidden = model.init_hidden(args.batch_size)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     for batch, i in enumerate(range(0, train_data.size(0) - 1, args.bptt)):
         optimizer.zero_grad()
         data, targets = get_batch(train_data, i)
@@ -166,10 +169,12 @@ def train():
         # `clip_grad_norm` helps prevent the exploding gradient
         torch.nn.utils.clip_grad_norm(model.parameters(), args.clip)
 
-        # for p in model.parameters():
-        #     p.data.add_(-lr, p.grad.data)
-
-        optimizer.step()
+        # switch optimization
+        if args.sgd:
+            for p in model.parameters():
+                p.data.add_(-args.lr, p.grad.data)
+        else:
+            optimizer.step()
 
         total_loss += loss.data
         total_ce += ce_loss.data
