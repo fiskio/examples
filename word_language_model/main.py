@@ -117,7 +117,7 @@ def evaluate(data_source):
         data, targets = get_batch(data_source, i, evaluation=True)
         output, hidden = model(data, hidden)
         output_flat = output.view(-1, ntokens)
-        total_loss += len(data) * criterion(output_flat, targets).data
+        total_loss += len(data) * nn.CrossEntropyLoss()(output_flat, targets).data
         hidden = repackage_hidden(hidden)
     return total_loss[0] / len(data_source)
 
