@@ -220,7 +220,7 @@ try:
         print('-' * 89)
 
         # Save the model after each validation
-        os.makedirs(args.save)
+        os.makedirs(args.save, exist_ok=True)
         model_name = 'model_%d_%.2f.pt' % (epoch, math.exp(val_loss))
         model_file = os.path.join(args.save, model_name)
         with open(model_file, 'wb') as f:
