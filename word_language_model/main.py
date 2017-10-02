@@ -1,4 +1,5 @@
 import os
+import glob
 import argparse
 import time
 import math
@@ -221,7 +222,7 @@ try:
 
         # Save the model after each validation
         os.makedirs(args.save, exist_ok=True)
-        model_name = 'model_%d_%.2f.pt' % (epoch, math.exp(val_loss))
+        model_name = 'model_%.2f_%d.pt' % (math.exp(val_loss), epoch)
         model_file = os.path.join(args.save, model_name)
         with open(model_file, 'wb') as f:
             torch.save(model, f)
@@ -237,8 +238,10 @@ except KeyboardInterrupt:
     print('-' * 89)
     print('Exiting from training early')
 
-# Load the best saved model.
-with open(args.save, 'rb') as f:
+# Load the best saved model
+best_model = sorted(glob.glob(os.path.join(args.save, '*.pt')))[-1]
+with open(best_model, 'rb') as f:
+    print('Loading CNTK model from path', best_model)
     model = torch.load(f)
 
 # Run on test data.
