@@ -49,6 +49,8 @@ parser.add_argument('--temp', type=float, default=10,
                     help='softmax temperature')
 parser.add_argument('--sgd', action='store_true',
                     help='use classic SGD')
+parser.add_argument('--evaluate', action='store_true',
+                    help='just run an evaluation on the best model')
 args = parser.parse_args()
 
 # Set the random seed manually for reproducibility.
@@ -208,35 +210,36 @@ def train():
 # Loop over epochs.
 best_val_loss = None
 
-# At any point you can hit Ctrl + C to break out of training early.
-try:
-    for epoch in range(1, args.epochs+1):
-        epoch_start_time = time.time()
-        train()
-        val_loss = evaluate(val_data)
-        print('-' * 89)
-        print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
-                'valid ppl {:8.2f}'.format(epoch, (time.time() - epoch_start_time),
-                                           val_loss, math.exp(val_loss)))
-        print('-' * 89)
+if not args.evaluate:
+    # At any point you can hit Ctrl + C to break out of training early.
+    try:
+        for epoch in range(1, args.epochs+1):
+            epoch_start_time = time.time()
+            train()
+            val_loss = evaluate(val_data)
+            print('-' * 89)
+            print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
+                    'valid ppl {:8.2f}'.format(epoch, (time.time() - epoch_start_time),
+                                               val_loss, math.exp(val_loss)))
+            print('-' * 89)
 
-        # Save the model after each validation
-        os.makedirs(args.save, exist_ok=True)
-        model_name = 'model_%.2f_%d.pt' % (math.exp(val_loss), epoch)
-        model_file = os.path.join(args.save, model_name)
-        with open(model_file, 'wb') as f:
-            torch.save(model, f)
+            # Save the model after each validation
+            os.makedirs(args.save, exist_ok=True)
+            model_name = 'model_%.2f_%d.pt' % (math.exp(val_loss), epoch)
+            model_file = os.path.join(args.save, model_name)
+            with open(model_file, 'wb') as f:
+                torch.save(model, f)
 
-        # Keep track of best_loss
-        if not best_val_loss or val_loss < best_val_loss:
-            best_val_loss = val_loss
-        else:
-            # Anneal the learning rate if no improvement in the validation
-            lr /= 4.0
-            print('new learning rate: %f' % lr)
-except KeyboardInterrupt:
-    print('-' * 89)
-    print('Exiting from training early')
+            # Keep track of best_loss
+            if not best_val_loss or val_loss < best_val_loss:
+                best_val_loss = val_loss
+            else:
+                # Anneal the learning rate if no improvement in the validation
+                lr /= 4.0
+                print('new learning rate: %f' % lr)
+    except KeyboardInterrupt:
+        print('-' * 89)
+        print('Exiting from training early')
 
 # Load the best saved model
 best_model = sorted(glob.glob(os.path.join(args.save, '*.pt')))[-1]
@@ -247,6 +250,6 @@ with open(best_model, 'rb') as f:
 # Run on test data.
 test_loss = evaluate(test_data)
 print('=' * 89)
-print('| End of training | test loss {:5.2f} | test ppl {:8.2f}'.format(
+print('| TEST SET | test loss {:5.2f} | test ppl {:8.2f}'.format(
     test_loss, math.exp(test_loss)))
 print('=' * 89)
