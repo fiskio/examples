@@ -150,24 +150,24 @@ def train():
         output, hidden = model(data, hidden)
 
         # CE loss
-        ce_loss = nn.CrossEntropyLoss()(output.view(-1, ntokens), targets)
-
-        # Target distribution
-        u = model.decoder.weight[targets.data]
-
-        score = model.decoder.weight @ u.transpose(0, 1)
-        score = nn.Softmax()(score / args.temp)
-        score = Variable(score.data, requires_grad=False)
-
-        y_hat = nn.Softmax()(output.view(-1, ntokens) / args.temp)
-
-        # KL loss
-        kl_loss = nn.KLDivLoss()(y_hat, score)
-        corr = args.temp * ntokens  # scale factor
-        kl_loss = corr * kl_loss ** 2  # kl_loss is squared
-
-        # combine losses
-        loss = args.beta * kl_loss + (1 - args.beta) * ce_loss
+        loss = nn.CrossEntropyLoss()(output.view(-1, ntokens), targets)
+        #
+        # # Target distribution
+        # u = model.decoder.weight[targets.data]
+        #
+        # score = model.decoder.weight @ u.transpose(0, 1)
+        # score = nn.Softmax()(score / args.temp)
+        # score = Variable(score.data, requires_grad=False)
+        #
+        # y_hat = nn.Softmax()(output.view(-1, ntokens) / args.temp)
+        #
+        # # KL loss
+        # kl_loss = nn.KLDivLoss()(y_hat, score)
+        # corr = args.temp * ntokens  # scale factor
+        # kl_loss = corr * kl_loss ** 2  # kl_loss is squared
+        #
+        # # combine losses
+        # loss = args.beta * kl_loss + (1 - args.beta) * ce_loss
 
         loss.backward()
 
@@ -182,26 +182,22 @@ def train():
             optimizer.step()
 
         total_loss += loss.data
-        total_ce += ce_loss.data
-        total_kl += kl_loss.data
+        # total_ce += ce_loss.data
+        # total_kl += kl_loss.data
 
         if batch % args.log_interval == 0 and batch > 0:
             cur_loss = total_loss[0] / args.log_interval
-            cur_ce = total_ce[0] / args.log_interval
-            cur_kl = total_kl[0] / args.log_interval
             elapsed = time.time() - start_time
             print('| epoch {:3d} | {:5d}/{:5d} batches | ms/batch {:5.2f} '
-                  '| lr {:f} | ce {:5.2f} | kl {:5.2f} | loss {:5.2f} '
+                  '| lr {:f} | loss {:5.2f} '
                   '| ppl {:7.2f}'.format(
                 epoch,
                 batch,
                 len(train_data) // args.bptt,
                 elapsed * 1000 / args.log_interval,
                 lr,
-                cur_ce,
-                cur_kl,
                 cur_loss,
-                math.exp(cur_ce)))
+                math.exp(cur_loss)))
             total_loss = 0
             total_ce = 0
             total_kl = 0
